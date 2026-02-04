@@ -219,6 +219,8 @@ class TypingCommand {
         this.errorCount = 0;
         this.maxErrors = 5;
         this.lockedMissile = null;
+        this.targetedMissiles = [];  // All missiles matching current prefix
+        this.reticles = [];  // Dynamic reticle elements
         this.isPaused = false;
         this.isGameOver = false;
         this.isRunning = false;
@@ -363,7 +365,7 @@ class TypingCommand {
                 normal: { baseSpawnIntervalMs: 2500, spawnIntervalDecreasePerWave: 120, minSpawnIntervalMs: 800 },
                 expert: { baseSpawnIntervalMs: 2000, spawnIntervalDecreasePerWave: 100, minSpawnIntervalMs: 500 }
             },
-            ufo: { chance: 0.08, minWave: 8, speedMultiplier: 0.6 },
+            ufo: { chance: 0.08, minWave: { beginner: 8, normal: 2, expert: 2 }, speedMultiplier: 0.6 },
             scoring: { basePoints: 100, lengthBonus: 20, ufoBonus: 500, accuracyMultipliers: { "100": 10, "99": 5, "98": 3, "97": 2 } },
             launcher: { hp: 1, count: 3 },
             waves: {
@@ -430,6 +432,8 @@ class TypingCommand {
         this.score = 0;
         this.missiles = [];
         this.lockedMissile = null;
+        this.targetedMissiles = [];
+        this.clearReticles();
         this.isGameOver = false;
         this.isPaused = false;
         this.isRunning = true;
@@ -537,7 +541,10 @@ class TypingCommand {
 
     spawnMissile() {
         const ufoConfig = this.config.ufo || {};
-        const isUFO = this.wave >= (ufoConfig.minWave || 8) && Math.random() < (ufoConfig.chance || 0.08);
+        const minWave = typeof ufoConfig.minWave === 'object'
+            ? (ufoConfig.minWave[this.difficulty] || 8)
+            : (ufoConfig.minWave || 8);
+        const isUFO = this.wave >= minWave && Math.random() < (ufoConfig.chance || 0.08);
         let word, answer, type = 'normal';
 
         if (isUFO) {
@@ -669,9 +676,11 @@ class TypingCommand {
             if (this.typedText.length > 0) {
                 // Check if the character being removed was correct
                 const charIndex = this.typedText.length - 1;
-                const wasCorrect = this.lockedMissile &&
-                    charIndex < this.lockedMissile.answer.length &&
-                    this.typedText[charIndex] === this.lockedMissile.answer[charIndex];
+                // Use first targeted missile to check if char was correct
+                const target = this.lockedMissile || this.targetedMissiles[0];
+                const wasCorrect = target &&
+                    charIndex < target.answer.length &&
+                    this.typedText[charIndex] === target.answer[charIndex];
 
                 if (wasCorrect) {
                     // Undo correct keystroke entirely - like it never happened
@@ -689,11 +698,15 @@ class TypingCommand {
                 this.typedText = this.typedText.slice(0, -1);
                 this.updateTypingDisplay();
 
-                if (this.typedText.length === 0 && this.lockedMissile) {
-                    this.updateMissileWordDisplay(this.lockedMissile, 0);
-                    this.lockedMissile.element.classList.remove('locked');
+                if (this.typedText.length === 0) {
+                    // Clear all targeting
+                    this.targetedMissiles.forEach(m => {
+                        this.updateMissileWordDisplay(m, 0);
+                        m.element.classList.remove('locked', 'targeted');
+                    });
+                    this.targetedMissiles = [];
                     this.lockedMissile = null;
-                    this.reticle.classList.remove('active');
+                    this.clearReticles();
                     this.errorCount = 0;
                 } else {
                     this.processTyping();
@@ -704,15 +717,17 @@ class TypingCommand {
 
         if (e.key === 'Enter') {
             e.preventDefault();
-            if (this.lockedMissile) {
-                this.updateMissileWordDisplay(this.lockedMissile, 0);
-                this.lockedMissile.element.classList.remove('locked');
-                this.lockedMissile = null;
-            }
+            // Clear all targeting
+            this.targetedMissiles.forEach(m => {
+                this.updateMissileWordDisplay(m, 0);
+                m.element.classList.remove('locked', 'targeted');
+            });
+            this.targetedMissiles = [];
+            this.lockedMissile = null;
             this.typedText = '';
             this.errorCount = 0;
             this.updateTypingDisplay();
-            this.reticle.classList.remove('active');
+            this.clearReticles();
             return;
         }
 
@@ -732,75 +747,81 @@ class TypingCommand {
     processTyping() {
         const typed = this.typedText;
 
-        if (!this.lockedMissile) {
-            for (const missile of this.missiles) {
-                if (missile.disabled) continue;
-                if (missile.answer.startsWith(typed)) {
-                    this.lockedMissile = missile;
-                    missile.element.classList.add('locked');
-                    // Don't increment correctKeystrokes here - it will be counted
-                    // in the locked missile handling below (line 631 or 600)
-                    break;
-                }
+        // Find all missiles that match the current typed prefix
+        const previousTargets = new Set(this.targetedMissiles);
+        const matchingMissiles = this.missiles.filter(m =>
+            !m.disabled && m.answer.startsWith(typed) && typed.length > 0
+        );
+
+        // Update targeted missiles
+        const oldTargeted = this.targetedMissiles;
+        this.targetedMissiles = matchingMissiles;
+
+        // Update visual states
+        oldTargeted.forEach(m => {
+            if (!matchingMissiles.includes(m)) {
+                m.element.classList.remove('locked', 'targeted');
+                this.updateMissileWordDisplay(m, 0);
             }
-        }
+        });
 
-        if (this.lockedMissile) {
-            if (this.lockedMissile.answer === typed) {
-                // Word completed - last keystroke was correct
-                this.correctKeystrokes++;
-                this.errorCount = 0;
-                // Show the final letter highlighted green before destroying
-                this.updateMissileWordDisplay(this.lockedMissile, typed.length);
-                const completedMissile = this.lockedMissile;
-                this.lockedMissile = null;
-                this.typedText = '';
-                this.updateTypingDisplay();
-                this.reticle.classList.remove('active');
-                // Brief delay to show completed state, then destroy
-                setTimeout(() => this.destroyMissile(completedMissile), 80);
-            } else if (!this.lockedMissile.answer.startsWith(typed)) {
-                // Mistyped character
-                this.typingDisplay.classList.add('error');
-                setTimeout(() => this.typingDisplay.classList.remove('error'), 300);
+        matchingMissiles.forEach(m => {
+            m.element.classList.add('targeted');
+            if (matchingMissiles.length === 1) {
+                m.element.classList.add('locked');
+            } else {
+                m.element.classList.remove('locked');
+            }
+            this.updateMissileWordDisplay(m, typed.length);
+        });
 
-                // Also animate the missile word label
-                const wordEl = this.lockedMissile.element.querySelector('.missile-word');
+        // Update locked missile (only when exactly one match)
+        this.lockedMissile = matchingMissiles.length === 1 ? matchingMissiles[0] : null;
+
+        // Update reticles
+        this.updateReticles();
+
+        // Handle completion or errors
+        if (matchingMissiles.length === 1 && matchingMissiles[0].answer === typed) {
+            // Word completed
+            this.correctKeystrokes++;
+            this.errorCount = 0;
+            const completedMissile = matchingMissiles[0];
+            this.targetedMissiles = [];
+            this.lockedMissile = null;
+            this.typedText = '';
+            this.updateTypingDisplay();
+            this.clearReticles();
+            setTimeout(() => this.destroyMissile(completedMissile), 80);
+        } else if (typed.length > 0 && matchingMissiles.length === 0) {
+            // No matches - typo
+            this.typingDisplay.classList.add('error');
+            setTimeout(() => this.typingDisplay.classList.remove('error'), 300);
+
+            // Animate error on previously targeted missiles
+            oldTargeted.forEach(m => {
+                const wordEl = m.element.querySelector('.missile-word');
                 if (wordEl) {
                     wordEl.classList.add('error');
                     setTimeout(() => wordEl.classList.remove('error'), 300);
                 }
+            });
 
-                if (this.requireBackspace) {
-                    // Keep wrong char, increment error count, must backspace to fix
-                    this.errorCount++;
-                    this.updateMissileWordDisplay(this.lockedMissile, this.getCorrectLength());
-                } else {
-                    // Auto-clear the wrong character
-                    this.typedText = this.typedText.slice(0, -1);
-                    this.updateTypingDisplay();
-                }
+            if (this.requireBackspace) {
+                this.errorCount++;
             } else {
-                // Keystroke matched - progressing on word
-                this.correctKeystrokes++;
-                this.updateMissileWordDisplay(this.lockedMissile, typed.length);
+                this.typedText = this.typedText.slice(0, -1);
+                this.updateTypingDisplay();
+                this.processTyping(); // Re-evaluate with corrected text
+                return;
             }
-        } else if (typed.length > 0) {
-            const hasMatch = this.missiles.some(m => !m.disabled && m.answer.startsWith(typed));
-            if (!hasMatch) {
-                // Mistyped character (no matching word)
-                this.typingDisplay.classList.add('error');
-                setTimeout(() => this.typingDisplay.classList.remove('error'), 300);
-                if (this.requireBackspace) {
-                    // Keep wrong char, must backspace to fix
-                    this.errorCount++;
-                } else {
-                    // Auto-clear the wrong character
-                    this.typedText = this.typedText.slice(0, -1);
-                    this.updateTypingDisplay();
-                }
-            } else {
-                // Valid keystroke (matched a word)
+        } else if (typed.length > 0 && matchingMissiles.length > 0) {
+            // Valid keystroke - matches at least one word
+            // Only count as correct if this keystroke narrowed down or maintained targets
+            if (!previousTargets.has(matchingMissiles[0]) || previousTargets.size !== matchingMissiles.length) {
+                this.correctKeystrokes++;
+            } else if (typed.length > 0) {
+                // Continuing to type on existing targets
                 this.correctKeystrokes++;
             }
         }
@@ -808,8 +829,10 @@ class TypingCommand {
 
     getCorrectLength() {
         // Returns how many characters are correct in current typed text
-        if (!this.lockedMissile) return 0;
-        const answer = this.lockedMissile.answer;
+        // Use first targeted missile for reference
+        const target = this.lockedMissile || this.targetedMissiles[0];
+        if (!target) return 0;
+        const answer = target.answer;
         let correct = 0;
         for (let i = 0; i < this.typedText.length && i < answer.length; i++) {
             if (this.typedText[i] === answer[i]) {
@@ -1033,14 +1056,75 @@ class TypingCommand {
         this.highScoreEl.textContent = `${this.highScore} (W${this.highScoreWave})`;
     }
 
-    updateReticle() {
-        if (this.lockedMissile) {
-            this.reticle.classList.add('active');
-            this.reticle.style.left = (this.lockedMissile.x - 30) + 'px';
-            this.reticle.style.top = (this.lockedMissile.y - 30) + 'px';
-        } else {
-            this.reticle.classList.remove('active');
+    clearReticles() {
+        // Remove all dynamic reticles
+        this.reticles.forEach(r => r.remove());
+        this.reticles = [];
+        this.reticle.classList.remove('active');
+    }
+
+    removeMissileFromTargeting(missile) {
+        // Remove a missile from targeting (e.g., when it's destroyed or leaves screen)
+        const wasTargeted = this.targetedMissiles.includes(missile);
+        this.targetedMissiles = this.targetedMissiles.filter(m => m !== missile);
+
+        if (this.lockedMissile === missile) {
+            this.lockedMissile = this.targetedMissiles.length === 1 ? this.targetedMissiles[0] : null;
         }
+
+        if (wasTargeted && this.targetedMissiles.length === 0 && this.typedText.length > 0) {
+            // All targets gone, clear typing
+            this.typedText = '';
+            this.errorCount = 0;
+            this.updateTypingDisplay();
+            this.clearReticles();
+        } else if (wasTargeted) {
+            this.updateReticles();
+        }
+    }
+
+    updateReticles() {
+        // Ensure we have the right number of reticles for targeted missiles
+        const needed = this.targetedMissiles.length;
+
+        // Remove excess reticles
+        while (this.reticles.length > needed) {
+            const r = this.reticles.pop();
+            r.remove();
+        }
+
+        // Add needed reticles (clone from the original)
+        while (this.reticles.length < needed) {
+            const clone = this.reticle.cloneNode(true);
+            clone.classList.add('dynamic-reticle');
+            this.container.appendChild(clone);
+            this.reticles.push(clone);
+        }
+
+        // Position all reticles and set active state
+        this.targetedMissiles.forEach((missile, i) => {
+            const r = this.reticles[i];
+            r.classList.add('active');
+            r.style.left = (missile.x - 30) + 'px';
+            r.style.top = (missile.y - 30) + 'px';
+
+            // Primary target (locked) gets full opacity, others are dimmed
+            if (this.targetedMissiles.length === 1 || i === 0) {
+                r.classList.add('primary');
+                r.classList.remove('secondary');
+            } else {
+                r.classList.remove('primary');
+                r.classList.add('secondary');
+            }
+        });
+
+        // Hide original reticle (we use clones)
+        this.reticle.classList.remove('active');
+    }
+
+    updateReticle() {
+        // Legacy method - now delegates to updateReticles
+        this.updateReticles();
     }
 
     gameLoop() {
@@ -1104,12 +1188,7 @@ class TypingCommand {
 
                 if (missile.type === 'ufo') {
                     if (missile.x < -150 || missile.x > window.innerWidth + 150) {
-                        if (this.lockedMissile === missile) {
-                            this.lockedMissile = null;
-                            this.typedText = '';
-                            this.updateTypingDisplay();
-                            this.reticle.classList.remove('active');
-                        }
+                        this.removeMissileFromTargeting(missile);
                         this.activeWords.delete(missile.answer);
                         missile.element.remove();
                         this.missiles = this.missiles.filter(m => m !== missile);
@@ -1117,12 +1196,7 @@ class TypingCommand {
                 } else {
                     const targetY = missile.targetLauncher.y;
                     if (missile.y >= targetY - 20) {
-                        if (this.lockedMissile === missile) {
-                            this.lockedMissile = null;
-                            this.typedText = '';
-                            this.updateTypingDisplay();
-                            this.reticle.classList.remove('active');
-                        }
+                        this.removeMissileFromTargeting(missile);
 
                         this.createExplosion(missile.x, missile.y);
                         this.activeWords.delete(missile.answer);
@@ -1136,7 +1210,7 @@ class TypingCommand {
                 }
             }
 
-            this.updateReticle();
+            this.updateReticles();
         }
 
         this.animationId = requestAnimationFrame(() => this.gameLoop());
@@ -1148,13 +1222,14 @@ class TypingCommand {
         this.waveTimerItem.classList.remove('bonus-hidden');
         this.bonusIndicator.classList.add('hidden');
 
-        if (this.lockedMissile) {
-            this.lockedMissile.element.classList.remove('locked');
-            this.lockedMissile = null;
-        }
+        // Clear all targeting
+        this.targetedMissiles.forEach(m => m.element.classList.remove('locked', 'targeted'));
+        this.targetedMissiles = [];
+        this.lockedMissile = null;
         this.typedText = '';
+        this.errorCount = 0;
         this.updateTypingDisplay();
-        this.reticle.classList.remove('active');
+        this.clearReticles();
 
         for (const missile of this.missiles) {
             this.createExplosion(missile.x, missile.y);

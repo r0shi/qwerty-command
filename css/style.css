@@ -331,6 +331,45 @@ body {
     to { transform: rotate(360deg); }
 }
 
+/* Dynamic reticles for multi-targeting */
+.dynamic-reticle {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 100;
+}
+
+.dynamic-reticle.active {
+    opacity: 1;
+}
+
+.dynamic-reticle.secondary {
+    opacity: 0.5;
+}
+
+.dynamic-reticle.secondary svg circle,
+.dynamic-reticle.secondary svg line {
+    stroke: #ff8800;
+}
+
+.dynamic-reticle svg {
+    width: 100%;
+    height: 100%;
+    animation: reticle-spin 4s linear infinite;
+}
+
+/* Targeted missile state (multiple matches) */
+.missile.targeted .missile-word {
+    box-shadow: 0 0 10px rgba(255, 136, 0, 0.6);
+}
+
+.missile.targeted.locked .missile-word {
+    box-shadow: 0 0 15px rgba(255, 255, 0, 0.8);
+}
+
 /* ===========================================
    Explosions
    =========================================== */

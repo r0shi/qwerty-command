@@ -34,7 +34,11 @@
 
     "ufo": {
         "chance": 0.08,
-        "minWave": 8,
+        "minWave": {
+            "beginner": 8,
+            "normal": 2,
+            "expert": 2
+        },
         "speedMultiplier": 0.6
     },
 
