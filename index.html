@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QWERTY Command</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- Sky canvas (gradient + stars) -->
+        <canvas id="sky-canvas"></canvas>
+
+        <!-- Moon -->
+        <div id="moon"></div>
+
+        <!-- City skyline -->
+        <div id="city"></div>
+
+        <!-- Launchers -->
+        <div id="launchers"></div>
+
+        <!-- Reticle -->
+        <div id="reticle">
+            <svg viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="45" fill="none" stroke="#ff0" stroke-width="2" stroke-dasharray="10 5"/>
+                <circle cx="50" cy="50" r="30" fill="none" stroke="#ff0" stroke-width="1"/>
+                <line x1="50" y1="0" x2="50" y2="20" stroke="#ff0" stroke-width="2"/>
+                <line x1="50" y1="80" x2="50" y2="100" stroke="#ff0" stroke-width="2"/>
+                <line x1="0" y1="50" x2="20" y2="50" stroke="#ff0" stroke-width="2"/>
+                <line x1="80" y1="50" x2="100" y2="50" stroke="#ff0" stroke-width="2"/>
+            </svg>
+        </div>
+
+        <!-- HUD -->
+        <div id="hud">
+            <div id="hud-left">
+                <div class="hud-item">
+                    <div class="hud-label">SCORE</div>
+                    <div class="hud-value" id="score">0</div>
+                </div>
+                <div class="hud-item">
+                    <div class="hud-label">BEST</div>
+                    <div class="hud-value" id="high-score">0</div>
+                </div>
+            </div>
+            <div id="hud-center">
+                <div class="hud-item">
+                    <div class="hud-label">TIME</div>
+                    <div class="hud-value" id="wave-timer">30.0</div>
+                </div>
+                <div id="bonus-indicator" class="hidden">
+                    FINAL SECONDS<br>
+                    <span class="countdown-time">5.0</span>
+                    2X BONUS!
+                </div>
+            </div>
+            <div id="hud-right">
+                <div class="hud-item">
+                    <div class="hud-label">WAVE</div>
+                    <div class="hud-value" id="wave">1</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input display -->
+        <div id="input-area">
+            <div id="typing-display" class="focused">
+                <span class="placeholder">Type to defend...</span><span class="cursor"></span>
+            </div>
+        </div>
+
+        <!-- Pause button -->
+        <button id="pause-btn" onclick="game.togglePause()">PAUSE</button>
+
+        <!-- Pause overlay -->
+        <div id="pause-overlay" class="hidden">
+            <h2>PAUSED</h2>
+            <p>Press ESC or click Resume to continue</p>
+            <button class="menu-btn" onclick="game.togglePause()">RESUME</button>
+            <button class="menu-btn" style="margin-top: 10px;" onclick="game.returnToMenu()">QUIT TO MENU</button>
+        </div>
+
+        <!-- Wave announcement -->
+        <div id="wave-announcement"></div>
+
+        <!-- Game over -->
+        <div id="game-over" class="hidden">
+            <h2>GAME OVER</h2>
+            <div id="final-score">Score: 0</div>
+            <button class="menu-btn" onclick="game.returnToMenu()">RETURN TO MENU</button>
+        </div>
+
+        <!-- Main menu -->
+        <div id="main-menu" class="menu-screen">
+            <h1 class="menu-title">QWERTY COMMAND</h1>
+            <p class="menu-subtitle">Defend your base with your keyboard!</p>
+            <div class="menu-buttons">
+                <button class="menu-btn" onclick="game.startGame('beginner')">BEGINNER</button>
+                <button class="menu-btn" onclick="game.startGame('normal')">NORMAL</button>
+                <button class="menu-btn" onclick="game.startGame('expert')">EXPERT</button>
+            </div>
+            <div class="menu-options">
+                <div class="option-row">
+                    <span>Require Backspace</span>
+                    <div class="option-toggle active" id="backspace-toggle" onclick="game.toggleBackspace()"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/game.js"></script>
+</body>
+</html>

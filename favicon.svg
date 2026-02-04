@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Tapered skyscraper silhouette in purple -->
+  <polygon points="16,2 20,8 20,30 12,30 12,8" fill="#6b4d8a"/>
+  <!-- Antenna/spire -->
+  <line x1="16" y1="2" x2="16" y2="0" stroke="#8866aa" stroke-width="1"/>
+  <!-- Windows -->
+  <rect x="14" y="10" width="2" height="2" fill="#aaccff" opacity="0.6"/>
+  <rect x="14" y="14" width="2" height="2" fill="#aaccff" opacity="0.5"/>
+  <rect x="14" y="18" width="2" height="2" fill="#aaccff" opacity="0.4"/>
+  <rect x="14" y="22" width="2" height="2" fill="#aaccff" opacity="0.3"/>
+  <rect x="14" y="26" width="2" height="2" fill="#aaccff" opacity="0.2"/>
+</svg>

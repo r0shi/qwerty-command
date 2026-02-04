@@ -1,0 +1,45 @@
+# Nginx configuration for QWERTY Command
+#
+# Include this in your nginx server block, or use it as a standalone config.
+#
+# For local development, you can also use:
+#   - python3 -m http.server 8000
+#   - npx serve .
+#   - php -S localhost:8000
+#
+# Note: The game works fine from file:// in most browsers, but some features
+# (like localStorage) may be restricted. A local server is recommended.
+
+server {
+    listen 8080;
+    server_name localhost;
+
+    root /path/to/typing_command;
+    index index.html;
+
+    # Serve static files with appropriate caching
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    # Cache images aggressively
+    location /imgs/ {
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Cache CSS/JS with revalidation
+    location ~* \.(css|js)$ {
+        expires 1d;
+        add_header Cache-Control "public, must-revalidate";
+    }
+
+    # Security headers
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+
+    # Gzip compression
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1000;
+}
