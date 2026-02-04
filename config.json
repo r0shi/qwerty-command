@@ -78,15 +78,15 @@
         ],
         "normal": [
             { "name": "Warm Up", "lists": ["easy", "medium"], "speed": 0.88 },
-            { "name": "Getting Started", "lists": ["easy", "medium"], "speed": 0.99 },
-            { "name": "Medium Words", "lists": ["medium"], "speed": 1.1 },
-            { "name": "Mixed Difficulty", "lists": ["easy", "medium", "hard"], "speed": 1.1 },
-            { "name": "Hard Words", "lists": ["hard"], "speed": 1.1 },
-            { "name": "Short Phrases", "lists": ["phrases"], "speed": 1.0 },
-            { "name": "Mixed with Phrases", "lists": ["medium", "phrases"], "speed": 1.1 },
-            { "name": "Punctuation", "lists": ["punctuated"], "speed": 1.0 },
-            { "name": "Everything", "lists": ["medium", "hard", "phrases", "punctuated"], "speed": 1.2 },
-            { "name": "Endless", "lists": ["medium", "hard", "phrases", "punctuated"], "speed": 1.3 }
+            { "name": "Getting Started", "lists": ["easy", "medium"], "speed": 0.92 },
+            { "name": "Medium Words", "lists": ["medium"], "speed": 0.96 },
+            { "name": "Mixed Difficulty", "lists": ["easy", "medium", "hard"], "speed": 1.0 },
+            { "name": "Hard Words", "lists": ["hard"], "speed": 1.04 },
+            { "name": "Short Phrases", "lists": ["phrases"], "speed": 0.96 },
+            { "name": "Mixed with Phrases", "lists": ["medium", "phrases"], "speed": 1.04 },
+            { "name": "Punctuation", "lists": ["punctuated"], "speed": 0.96 },
+            { "name": "Everything", "lists": ["medium", "hard", "phrases", "punctuated"], "speed": 1.1 },
+            { "name": "Endless", "lists": ["medium", "hard", "phrases", "punctuated"], "speed": 1.15 }
         ],
         "expert": [
             { "name": "Hard Words", "lists": ["hard"], "speed": 1.32 },
