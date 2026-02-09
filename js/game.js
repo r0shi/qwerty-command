@@ -216,6 +216,7 @@ class TypingCommand {
         this.waveTimer = 0;
         this.difficulty = 'normal';
         this.requireBackspace = true;
+        this.caseSensitive = false;
         this.errorCount = 0;
         this.maxErrors = 5;
         this.lockedMissile = null;
@@ -281,6 +282,7 @@ class TypingCommand {
         this.updateHighScoreDisplay();
         document.addEventListener('keydown', (e) => this.handleKeydown(e));
         document.getElementById('backspace-toggle').classList.toggle('active', this.requireBackspace);
+        document.getElementById('case-toggle').classList.toggle('active', this.caseSensitive);
 
         // Enable menu buttons now that we're loaded
         document.querySelectorAll('.menu-btn').forEach(btn => btn.disabled = false);
@@ -358,7 +360,7 @@ class TypingCommand {
 
     getDefaultConfig() {
         return {
-            timing: { typoLockoutMs: 2000, waveDurationMs: 60000, waveAnnouncementMs: 1500, waveTransitionMs: 2500, bonusPeriodMs: 5000 },
+            timing: { waveDurationMs: 60000, waveAnnouncementMs: 1500, waveTransitionMs: 2500, bonusPeriodMs: 5000 },
             speeds: { baseSpeed: 1, speedIncreasePerWave: 0.08, lengthSpeedFactor: 0.03, speedVariability: 0.2 },
             spawning: {
                 beginner: { baseSpawnIntervalMs: 4000, spawnIntervalDecreasePerWave: 150, minSpawnIntervalMs: 1200 },
@@ -421,6 +423,11 @@ class TypingCommand {
     toggleBackspace() {
         this.requireBackspace = !this.requireBackspace;
         document.getElementById('backspace-toggle').classList.toggle('active', this.requireBackspace);
+    }
+
+    toggleCaseSensitive() {
+        this.caseSensitive = !this.caseSensitive;
+        document.getElementById('case-toggle').classList.toggle('active', this.caseSensitive);
     }
 
     startGame(difficulty) {
@@ -557,6 +564,11 @@ class TypingCommand {
             answer = word;
         }
 
+        if (!this.caseSensitive) {
+            word = word.toLowerCase();
+            answer = answer.toLowerCase();
+        }
+
         let startX, startY, vx, vy, targetLauncher = null;
 
         // Speed calculation
@@ -648,8 +660,6 @@ class TypingCommand {
             vx: vx,
             vy: vy,
             targetLauncher: targetLauncher,
-            disabled: false,
-            disabledUntil: 0,
         });
     }
 
@@ -748,9 +758,8 @@ class TypingCommand {
         const typed = this.typedText;
 
         // Find all missiles that match the current typed prefix
-        const previousTargets = new Set(this.targetedMissiles);
         const matchingMissiles = this.missiles.filter(m =>
-            !m.disabled && m.answer.startsWith(typed) && typed.length > 0
+            m.answer.startsWith(typed) && typed.length > 0
         );
 
         // Update targeted missiles
@@ -817,31 +826,8 @@ class TypingCommand {
             }
         } else if (typed.length > 0 && matchingMissiles.length > 0) {
             // Valid keystroke - matches at least one word
-            // Only count as correct if this keystroke narrowed down or maintained targets
-            if (!previousTargets.has(matchingMissiles[0]) || previousTargets.size !== matchingMissiles.length) {
-                this.correctKeystrokes++;
-            } else if (typed.length > 0) {
-                // Continuing to type on existing targets
-                this.correctKeystrokes++;
-            }
+            this.correctKeystrokes++;
         }
-    }
-
-    getCorrectLength() {
-        // Returns how many characters are correct in current typed text
-        // Use first targeted missile for reference
-        const target = this.lockedMissile || this.targetedMissiles[0];
-        if (!target) return 0;
-        const answer = target.answer;
-        let correct = 0;
-        for (let i = 0; i < this.typedText.length && i < answer.length; i++) {
-            if (this.typedText[i] === answer[i]) {
-                correct++;
-            } else {
-                break;
-            }
-        }
-        return correct;
     }
 
     updateMissileWordDisplay(missile, typedCount) {
@@ -1122,11 +1108,6 @@ class TypingCommand {
         this.reticle.classList.remove('active');
     }
 
-    updateReticle() {
-        // Legacy method - now delegates to updateReticles
-        this.updateReticles();
-    }
-
     gameLoop() {
         if (!this.isRunning) {
             this.animationId = null;
@@ -1175,12 +1156,9 @@ class TypingCommand {
                 }
             }
 
-            for (const missile of this.missiles) {
-                if (missile.disabled && now >= missile.disabledUntil) {
-                    missile.disabled = false;
-                    missile.element.classList.remove('disabled');
-                }
+            const missilesToRemove = [];
 
+            for (const missile of this.missiles) {
                 missile.x += missile.vx;
                 missile.y += missile.vy;
                 missile.element.style.left = missile.x + 'px';
@@ -1191,7 +1169,7 @@ class TypingCommand {
                         this.removeMissileFromTargeting(missile);
                         this.activeWords.delete(missile.answer);
                         missile.element.remove();
-                        this.missiles = this.missiles.filter(m => m !== missile);
+                        missilesToRemove.push(missile);
                     }
                 } else {
                     const targetY = missile.targetLauncher.y;
@@ -1201,13 +1179,17 @@ class TypingCommand {
                         this.createExplosion(missile.x, missile.y);
                         this.activeWords.delete(missile.answer);
                         missile.element.remove();
-                        this.missiles = this.missiles.filter(m => m !== missile);
+                        missilesToRemove.push(missile);
 
                         if (missile.targetLauncher.hp > 0) {
                             this.hitLauncher(missile.targetLauncher);
                         }
                     }
                 }
+            }
+
+            if (missilesToRemove.length > 0) {
+                this.missiles = this.missiles.filter(m => !missilesToRemove.includes(m));
             }
 
             this.updateReticles();
