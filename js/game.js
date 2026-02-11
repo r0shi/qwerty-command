@@ -52,15 +52,27 @@ class SkyRenderer {
 
         for (let i = 0; i < numStars; i++) {
             const color = pickColor();
+            const radius = Math.random() * 1.5 + 0.5;
+            // ~12% of stars get starburst shape, biased toward brighter/larger ones
+            const isBurst = radius > 0.9 && Math.random() < 0.24;
             this.stars.push({
                 x: Math.random() * this.canvas.width,
                 y: Math.random() * this.canvas.height * 0.75, // Only in upper 75%
-                radius: Math.random() * 1.5 + 0.5,
-                baseAlpha: Math.random() * 0.5 + 0.3,
+                radius: radius,
+                baseAlpha: Math.random() * 0.4 + 0.15,
                 alpha: 0,
-                twinkleSpeed: Math.random() * 0.02 + 0.01,
+                twinkleSpeed: Math.random() * 0.0375 + 0.00625,
                 twinkleOffset: Math.random() * Math.PI * 2,
-                color: { r: color.r, g: color.g, b: color.b }
+                // Second harmonic for more complex twinkling
+                twinkleSpeed2: Math.random() * 0.0875 + 0.025,
+                twinkleOffset2: Math.random() * Math.PI * 2,
+                // Occasional bright flash: random interval
+                flashPhase: Math.random() * Math.PI * 2,
+                flashSpeed: Math.random() * 0.00625 + 0.0025,
+                color: { r: color.r, g: color.g, b: color.b },
+                burst: isBurst,
+                burstLen: isBurst ? (radius * 3 + Math.random() * 2) : 0,
+                rotation: Math.random() * Math.PI * 0.5, // Slight random rotation for bursts
             });
         }
     }
@@ -80,24 +92,59 @@ class SkyRenderer {
         // Draw stars
         const time = Date.now() / 1000;
         for (const star of this.stars) {
-            // Calculate twinkling alpha
-            const twinkle = Math.sin(time * star.twinkleSpeed * 10 + star.twinkleOffset);
-            star.alpha = star.baseAlpha + twinkle * 0.3;
-            star.alpha = Math.max(0.1, Math.min(1, star.alpha));
+            // Multi-layered twinkling: two sine waves at different speeds
+            const t1 = Math.sin(time * star.twinkleSpeed * 10 + star.twinkleOffset);
+            const t2 = Math.sin(time * star.twinkleSpeed2 * 10 + star.twinkleOffset2) * 0.5;
+            // Occasional bright flash (sharp peak using pow of abs sin)
+            const flashRaw = Math.sin(time * star.flashSpeed * 10 + star.flashPhase);
+            const flash = Math.pow(Math.max(0, flashRaw), 8) * 0.9;
+
+            star.alpha = star.baseAlpha + (t1 + t2) * 0.375 + flash;
+            star.alpha = Math.max(0.05, Math.min(1, star.alpha));
 
             const { r, g, b } = star.color;
 
-            ctx.beginPath();
-            ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${star.alpha})`;
-            ctx.fill();
+            if (star.burst) {
+                // Draw 4-point starburst shape
+                const spikeLen = star.burstLen * (0.8 + star.alpha * 0.4);
+                const coreR = star.radius * 0.8;
+                ctx.save();
+                ctx.translate(star.x, star.y);
+                ctx.rotate(star.rotation);
 
-            // Add a subtle glow to brighter stars
-            if (star.radius > 1 && star.alpha > 0.5) {
+                // Draw thin cross spikes
+                const spikeWidth = Math.max(0.3, star.radius * 0.3);
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${star.alpha * 0.7})`;
+                ctx.fillRect(-spikeWidth / 2, -spikeLen, spikeWidth, spikeLen * 2);
+                ctx.fillRect(-spikeLen, -spikeWidth / 2, spikeLen * 2, spikeWidth);
+
+                // Bright core
                 ctx.beginPath();
-                ctx.arc(star.x, star.y, star.radius * 2, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${star.alpha * 0.2})`;
+                ctx.arc(0, 0, coreR, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${star.alpha})`;
                 ctx.fill();
+
+                // Soft glow around burst
+                ctx.beginPath();
+                ctx.arc(0, 0, spikeLen * 0.6, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${star.alpha * 0.1})`;
+                ctx.fill();
+
+                ctx.restore();
+            } else {
+                // Regular circular star
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${star.alpha})`;
+                ctx.fill();
+
+                // Glow for brighter stars
+                if (star.radius > 1 && star.alpha > 0.5) {
+                    ctx.beginPath();
+                    ctx.arc(star.x, star.y, star.radius * 2.5, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${star.alpha * 0.15})`;
+                    ctx.fill();
+                }
             }
         }
     }
@@ -185,6 +232,18 @@ class ScoreAPI {
         }
     }
 
+    async getStats(difficulty) {
+        if (!this.useServer) return null;
+        try {
+            const response = await fetch(`${this.baseUrl}/api/stats?difficulty=${difficulty}`);
+            if (!response.ok) throw new Error('API error');
+            const data = await response.json();
+            return data.stats;
+        } catch (error) {
+            return null;
+        }
+    }
+
     _getLocalBest() {
         const score = parseInt(localStorage.getItem('qwertyCommandHighScore')) || 0;
         const wave = parseInt(localStorage.getItem('qwertyCommandHighScoreWave')) || 1;
@@ -261,6 +320,9 @@ class TypingCommand {
 
         // Score API for persistent storage
         this.scoreAPI = new ScoreAPI();
+
+        // Audio manager
+        this.audio = new AudioManager();
 
         // Sky renderer
         this.skyRenderer = new SkyRenderer(document.getElementById('sky-canvas'));
@@ -430,8 +492,142 @@ class TypingCommand {
         document.getElementById('case-toggle').classList.toggle('active', this.caseSensitive);
     }
 
+    toggleMusic() {
+        const enabled = this.audio.toggleMusic();
+        document.getElementById('music-toggle').classList.toggle('active', enabled);
+        const pauseToggle = document.getElementById('pause-music-toggle');
+        if (pauseToggle) pauseToggle.classList.toggle('active', enabled);
+    }
+
+    toggleSFX() {
+        const enabled = this.audio.toggleSFX();
+        document.getElementById('sfx-toggle').classList.toggle('active', enabled);
+        const pauseToggle = document.getElementById('pause-sfx-toggle');
+        if (pauseToggle) pauseToggle.classList.toggle('active', enabled);
+    }
+
+    async loadStats(difficulty, targetEl) {
+        if (!targetEl) return;
+        targetEl.innerHTML = '<div class="stats-loading">Loading stats...</div>';
+        const stats = await this.scoreAPI.getStats(difficulty);
+        if (!stats) {
+            targetEl.innerHTML = '<div class="stats-empty">No stats recorded yet for this difficulty.</div>';
+            return;
+        }
+        const a = stats.accuracy;
+        const p = stats.percentiles;
+        const d = stats.distribution;
+        const total = stats.games;
+        const pct = (count) => total > 0 ? Math.round(count / total * 100) : 0;
+
+        let html = `<div class="stats-header">${stats.difficulty.toUpperCase()} — ${stats.games} games</div>`;
+
+        // Main stats grid
+        html += '<div class="stats-grid">';
+        html += `<div class="stats-cell"><span class="stats-val">${a.avg}%</span><span class="stats-lbl">Avg Accuracy</span></div>`;
+        html += `<div class="stats-cell"><span class="stats-val">${a.median}%</span><span class="stats-lbl">Median</span></div>`;
+        html += `<div class="stats-cell"><span class="stats-val">${a.min}% — ${a.max}%</span><span class="stats-lbl">Min / Max</span></div>`;
+        html += `<div class="stats-cell"><span class="stats-val">${stats.score.max}</span><span class="stats-lbl">Top Score</span></div>`;
+        html += `<div class="stats-cell"><span class="stats-val">${stats.score.avg}</span><span class="stats-lbl">Avg Score</span></div>`;
+        html += `<div class="stats-cell"><span class="stats-val">${stats.wave.max}</span><span class="stats-lbl">Best Wave</span></div>`;
+        html += `<div class="stats-cell"><span class="stats-val">${stats.wave.avg}</span><span class="stats-lbl">Avg Wave</span></div>`;
+        if (stats.trend != null) {
+            const sign = stats.trend >= 0 ? '+' : '';
+            const cls = stats.trend >= 0 ? 'trend-up' : 'trend-down';
+            html += `<div class="stats-cell"><span class="stats-val ${cls}">${sign}${stats.trend}%</span><span class="stats-lbl">Trend</span></div>`;
+        } else {
+            html += `<div class="stats-cell"><span class="stats-val">${a.stdev}%</span><span class="stats-lbl">Std Dev</span></div>`;
+        }
+        html += '</div>';
+
+        // Percentiles row
+        html += '<div class="stats-percentiles">';
+        html += '<div class="stats-sub-header">Accuracy Percentiles</div>';
+        html += '<div class="stats-pct-row">';
+        for (const [label, val] of [['P10', p.p10], ['P25', p.p25], ['P75', p.p75], ['P90', p.p90], ['P95', p.p95]]) {
+            html += `<div class="stats-pct-cell"><span class="stats-pct-val">${val}%</span><span class="stats-pct-lbl">${label}</span></div>`;
+        }
+        html += '</div></div>';
+
+        // Distribution bar
+        html += '<div class="stats-dist">';
+        html += '<div class="stats-sub-header">Accuracy Distribution</div>';
+        const buckets = [
+            { key: '97-100', label: '97%+', cls: 'dist-great' },
+            { key: '95-97', label: '95-97%', cls: 'dist-good' },
+            { key: '90-95', label: '90-95%', cls: 'dist-ok' },
+            { key: '80-90', label: '80-90%', cls: 'dist-fair' },
+            { key: 'below_80', label: '<80%', cls: 'dist-low' },
+        ];
+        html += '<div class="dist-bar">';
+        for (const b of buckets) {
+            const pc = pct(d[b.key]);
+            if (pc > 0) {
+                html += `<div class="dist-seg ${b.cls}" style="width:${pc}%" title="${b.label}: ${d[b.key]}/${total}">${pc > 6 ? pc + '%' : ''}</div>`;
+            }
+        }
+        html += '</div>';
+        html += '<div class="dist-legend">';
+        for (const b of buckets) {
+            if (d[b.key] > 0) {
+                html += `<span class="legend-item"><span class="legend-dot ${b.cls}"></span>${b.label} (${d[b.key]})</span>`;
+            }
+        }
+        html += '</div></div>';
+
+        targetEl.innerHTML = html;
+    }
+
+    showStats(context) {
+        this._statsContext = context;
+        const overlay = document.getElementById('stats-overlay');
+        const liveSection = document.getElementById('stats-live-section');
+        const historySection = document.getElementById('stats-history-section');
+
+        // Show live game stats if opened from pause
+        if (context === 'pause' && this.isRunning) {
+            const accuracy = this.totalKeystrokes > 0
+                ? Math.round((this.correctKeystrokes / this.totalKeystrokes) * 1000) / 10
+                : 100;
+            liveSection.innerHTML = `
+                <div class="stats-live-panel">
+                    <div class="stats-sub-header">Current Game — ${this.difficulty.toUpperCase()}</div>
+                    <div class="stats-grid">
+                        <div class="stats-cell"><span class="stats-val">${this.score}</span><span class="stats-lbl">Score</span></div>
+                        <div class="stats-cell"><span class="stats-val">${this.wave}</span><span class="stats-lbl">Wave</span></div>
+                        <div class="stats-cell"><span class="stats-val">${accuracy}%</span><span class="stats-lbl">Accuracy</span></div>
+                        <div class="stats-cell"><span class="stats-val">${this.correctKeystrokes}/${this.totalKeystrokes}</span><span class="stats-lbl">Keys</span></div>
+                    </div>
+                </div>
+            `;
+        } else {
+            liveSection.innerHTML = '';
+        }
+
+        // Load historical stats for the active tab
+        const activeTab = overlay.querySelector('.stats-tab.active');
+        const diff = activeTab ? activeTab.dataset.difficulty : 'normal';
+        this.loadStats(diff, historySection);
+
+        overlay.classList.remove('hidden');
+    }
+
+    hideStats() {
+        document.getElementById('stats-overlay').classList.add('hidden');
+    }
+
+    async switchStatsTab(difficulty) {
+        const overlay = document.getElementById('stats-overlay');
+        overlay.querySelectorAll('.stats-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.difficulty === difficulty);
+        });
+        const content = document.getElementById('stats-history-section');
+        await this.loadStats(difficulty, content);
+    }
+
     startGame(difficulty) {
         if (!this.isLoaded) return;
+        this.hideStats();
 
         this.difficulty = difficulty;
         this.wave = 1;
@@ -466,6 +662,8 @@ class TypingCommand {
         this.pauseBtn.textContent = 'PAUSE';
         this.pauseBtn.classList.add('visible');
 
+        this.audio.play('gameStart');
+        this.audio.playMusic();
         this.startWave();
     }
 
@@ -483,6 +681,7 @@ class TypingCommand {
                 this.waveAnnouncement.textContent = `WAVE ${this.wave}: ${waveDef.name}`;
             }
             this.waveAnnouncement.classList.add('visible');
+            this.audio.play('waveAnnouncement');
 
             if (shouldPause) {
                 this.isPaused = true;
@@ -650,7 +849,7 @@ class TypingCommand {
 
         this.activeWords.add(answer);
 
-        this.missiles.push({
+        const missile = {
             element: missileEl,
             word: word,
             answer: answer,
@@ -660,7 +859,14 @@ class TypingCommand {
             vx: vx,
             vy: vy,
             targetLauncher: targetLauncher,
-        });
+        };
+        this.missiles.push(missile);
+
+        if (isUFO) {
+            missile._id = Date.now() + Math.random();
+            this.audio.play('ufoAppears');
+            this.audio.startLoop('ufoHum', missile._id);
+        }
     }
 
     handleKeydown(e) {
@@ -684,6 +890,7 @@ class TypingCommand {
         if (e.key === 'Backspace') {
             e.preventDefault();
             if (this.typedText.length > 0) {
+                this.audio.play('backspace');
                 // Check if the character being removed was correct
                 const charIndex = this.typedText.length - 1;
                 // Use first targeted missile to check if char was correct
@@ -727,6 +934,7 @@ class TypingCommand {
 
         if (e.key === 'Enter') {
             e.preventDefault();
+            this.audio.play('inputClear');
             // Clear all targeting
             this.targetedMissiles.forEach(m => {
                 this.updateMissileWordDisplay(m, 0);
@@ -785,7 +993,13 @@ class TypingCommand {
         });
 
         // Update locked missile (only when exactly one match)
+        const wasLocked = this.lockedMissile;
         this.lockedMissile = matchingMissiles.length === 1 ? matchingMissiles[0] : null;
+
+        // Target lock sound when we first lock onto a single missile
+        if (this.lockedMissile && !wasLocked) {
+            this.audio.play('targetLock');
+        }
 
         // Update reticles
         this.updateReticles();
@@ -804,6 +1018,7 @@ class TypingCommand {
             setTimeout(() => this.destroyMissile(completedMissile), 80);
         } else if (typed.length > 0 && matchingMissiles.length === 0) {
             // No matches - typo
+            this.audio.play('errorKey');
             this.typingDisplay.classList.add('error');
             setTimeout(() => this.typingDisplay.classList.remove('error'), 300);
 
@@ -827,6 +1042,7 @@ class TypingCommand {
         } else if (typed.length > 0 && matchingMissiles.length > 0) {
             // Valid keystroke - matches at least one word
             this.correctKeystrokes++;
+            this.audio.play('correctKey');
         }
     }
 
@@ -848,6 +1064,19 @@ class TypingCommand {
         this.isPaused = !this.isPaused;
         this.pauseOverlay.classList.toggle('hidden', !this.isPaused);
         this.pauseBtn.textContent = this.isPaused ? 'RESUME' : 'PAUSE';
+        this.audio.play('pause');
+        if (this.isPaused) {
+            this.audio.pauseMusic();
+            this.audio.stopAllLoops();
+            // Sync pause overlay toggles with current audio state
+            const pmToggle = document.getElementById('pause-music-toggle');
+            const psToggle = document.getElementById('pause-sfx-toggle');
+            if (pmToggle) pmToggle.classList.toggle('active', this.audio.musicEnabled);
+            if (psToggle) psToggle.classList.toggle('active', this.audio.sfxEnabled);
+        } else {
+            this.audio.resumeMusic();
+            this.hideStats();
+        }
     }
 
     destroyMissile(missile) {
@@ -865,6 +1094,10 @@ class TypingCommand {
         // Remove from active tracking immediately (so it can't be hit again)
         this.activeWords.delete(missile.answer);
         this.missiles = this.missiles.filter(m => m !== missile);
+
+        if (missile.type === 'ufo') {
+            this.audio.stopLoop('ufoHum', missile._id);
+        }
 
         // Fire interceptor from a random active launcher
         // Explosion and missile removal happen when interceptor arrives
@@ -896,6 +1129,8 @@ class TypingCommand {
         const startY = launcher.y - interceptorHeight;
         const endX = targetX;
         const endY = targetY - interceptorHeight;
+
+        this.audio.play('interceptorLaunch');
 
         const interceptor = document.createElement('div');
         interceptor.className = 'interceptor';
@@ -940,6 +1175,7 @@ class TypingCommand {
     }
 
     createUFOExplosion(x, y, points) {
+        this.audio.play('ufoExplosion');
         const explosion = document.createElement('div');
         explosion.className = 'ufo-explosion';
         explosion.innerHTML = `
@@ -966,6 +1202,7 @@ class TypingCommand {
     }
 
     createExplosion(x, y) {
+        this.audio.play('explosion');
         const explosion = document.createElement('div');
         explosion.className = 'explosion';
         explosion.innerHTML = '<div class="explosion-inner"></div>';
@@ -979,6 +1216,12 @@ class TypingCommand {
     hitLauncher(launcher) {
         launcher.hp--;
         launcher.element.querySelector('.launcher-hp').textContent = `HP: ${launcher.hp}`;
+
+        if (launcher.hp <= 0) {
+            this.audio.play('launcherDestroyed');
+        } else {
+            this.audio.play('launcherHit');
+        }
 
         this.createMushroomCloud(launcher.x, launcher.y);
         this.createScreenFlash();
@@ -1132,9 +1375,12 @@ class TypingCommand {
             if (this.inBonusPeriod && !wasInBonus) {
                 this.waveTimerItem.classList.add('bonus-hidden');
                 this.bonusIndicator.classList.remove('hidden');
+                this.audio.play('bonusStart');
+                this.audio.startLoop('bonusCountdown');
             } else if (!this.inBonusPeriod && wasInBonus) {
                 this.waveTimerItem.classList.remove('bonus-hidden');
                 this.bonusIndicator.classList.add('hidden');
+                this.audio.stopLoop('bonusCountdown');
             }
 
             if (this.inBonusPeriod) {
@@ -1170,6 +1416,7 @@ class TypingCommand {
                         this.activeWords.delete(missile.answer);
                         missile.element.remove();
                         missilesToRemove.push(missile);
+                        this.audio.stopLoop('ufoHum', missile._id);
                     }
                 } else {
                     const targetY = missile.targetLauncher.y;
@@ -1203,6 +1450,8 @@ class TypingCommand {
         this.inBonusPeriod = false;
         this.waveTimerItem.classList.remove('bonus-hidden');
         this.bonusIndicator.classList.add('hidden');
+        this.audio.play('waveEnd');
+        this.audio.stopAllLoops();
 
         // Clear all targeting
         this.targetedMissiles.forEach(m => m.element.classList.remove('locked', 'targeted'));
@@ -1229,6 +1478,7 @@ class TypingCommand {
 
             this.waveAnnouncement.textContent = `Wave ${this.wave} Incoming...\n${waveDef.name}`;
             this.waveAnnouncement.classList.add('visible');
+            this.audio.nextTrack();
 
             setTimeout(() => {
                 this.waveAnnouncement.classList.remove('visible');
@@ -1245,6 +1495,9 @@ class TypingCommand {
         this.inBonusPeriod = false;
         this.waveTimerItem.classList.remove('bonus-hidden');
         this.bonusIndicator.classList.add('hidden');
+        this.audio.stopMusic();
+        this.audio.stopAllLoops();
+        this.audio.play('gameOver');
 
         // Calculate accuracy and multiplier
         const accuracy = this.totalKeystrokes > 0
@@ -1303,8 +1556,11 @@ class TypingCommand {
     returnToMenu() {
         this.isRunning = false;
         this.isPaused = false;
+        this.audio.stopMusic();
+        this.audio.stopAllLoops();
         this.missiles.forEach(m => m.element.remove());
         this.missiles = [];
+        this.hideStats();
         this.gameOverEl.classList.add('hidden');
         this.pauseOverlay.classList.add('hidden');
         this.pauseBtn.classList.remove('visible');

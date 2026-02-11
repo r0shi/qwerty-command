@@ -78,8 +78,34 @@
         <div id="pause-overlay" class="hidden">
             <h2>PAUSED</h2>
             <p>Press ESC or click Resume to continue</p>
+            <div class="pause-options">
+                <div class="option-row">
+                    <span>Music</span>
+                    <div class="option-toggle active" id="pause-music-toggle" onclick="game.toggleMusic()"></div>
+                </div>
+                <div class="option-row">
+                    <span>Sound Effects</span>
+                    <div class="option-toggle active" id="pause-sfx-toggle" onclick="game.toggleSFX()"></div>
+                </div>
+            </div>
             <button class="menu-btn" onclick="game.togglePause()">RESUME</button>
+            <button class="menu-btn" style="margin-top: 10px;" onclick="game.showStats('pause')">STATS</button>
             <button class="menu-btn" style="margin-top: 10px;" onclick="game.returnToMenu()">QUIT TO MENU</button>
+        </div>
+
+        <!-- Stats overlay -->
+        <div id="stats-overlay" class="hidden">
+            <div class="stats-overlay-inner">
+                <h2>STATS</h2>
+                <div id="stats-live-section"></div>
+                <div class="stats-tabs">
+                    <button class="stats-tab" data-difficulty="beginner" onclick="game.switchStatsTab('beginner')">BEGINNER</button>
+                    <button class="stats-tab active" data-difficulty="normal" onclick="game.switchStatsTab('normal')">NORMAL</button>
+                    <button class="stats-tab" data-difficulty="expert" onclick="game.switchStatsTab('expert')">EXPERT</button>
+                </div>
+                <div id="stats-history-section" class="stats-content"></div>
+                <button class="menu-btn" style="margin-top: 20px;" onclick="game.hideStats()">BACK</button>
+            </div>
         </div>
 
         <!-- Wave announcement -->
@@ -110,11 +136,21 @@
                     <span>Case Sensitive</span>
                     <div class="option-toggle" id="case-toggle" onclick="game.toggleCaseSensitive()"></div>
                 </div>
+                <div class="option-row">
+                    <span>Music</span>
+                    <div class="option-toggle active" id="music-toggle" onclick="game.toggleMusic()"></div>
+                </div>
+                <div class="option-row">
+                    <span>Sound Effects</span>
+                    <div class="option-toggle active" id="sfx-toggle" onclick="game.toggleSFX()"></div>
+                </div>
             </div>
+            <button class="menu-btn" style="margin-top: 15px;" onclick="game.showStats('menu')">STATS</button>
         </div>
     </div>
 
     <!-- Scripts -->
+    <script src="js/audio.js"></script>
     <script src="js/game.js"></script>
 </body>
 </html>
